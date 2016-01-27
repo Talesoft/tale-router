@@ -1,15 +1,11 @@
 {
-    "name": "talesoft/tale-runtime",
+    "name": "talesoft/tale-router",
     "type": "library",
-    "keywords": ["controller", "mvc", "app", "config"],
-    "description": "A PHP library implementing the Controller-pattern and a simple App-model",
+    "keywords": ["router"],
+    "description": "A router middleware for the Tale Runtime",
     "license": "MIT",
-    "homepage": "http://runtime.talesoft.io",
+    "homepage": "http://router.tale.talesoft.io",
     "authors": [
-        {
-            "name": "Tale HTTP Community",
-            "homepage": "https://github.com/Talesoft/tale-runtime/graphs/contributors"
-        },
         {
             "name": "Talesoft",
             "homepage": "http://talesoft.io",
@@ -23,11 +19,14 @@
     "minimum-stability": "dev",
     "require": {
         "php": ">=5.5.0",
-        "psr/http-message": ">=1.0",
-        "talesoft/tale-runtime": ">=1.0-dev"
+        "psr/http-message": "~1.0",
+        "talesoft/tale-stream": "~0.1",
+        "talesoft/tale-http": "~0.1",
+        "talesoft/tale-runtime": "~0.1",
+        "talesoft/tale-event": "~0.1"
     },
     "require-dev": {
-        "phpunit/phpunit": ">=4.0"
+        "phpunit/phpunit": "~4.0"
     },
     "autoload": {
         "psr-4": {

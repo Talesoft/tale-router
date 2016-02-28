@@ -1,20 +1,16 @@
 
-# Tale Runtime
+# Tale Router
 **A Tale Framework Component**
 
-# What is Tale Runtime?
+# What is Tale Router?
 
-Tale Runtime is a small PSR-7 compliant, middleware-based HTTP runtime for any kind
-of PHP project.
-
-It acts as a foundation for web applications with PHP.
 
 # Installation
 
 Install via Composer
 
 ```bash
-composer require "talesoft/tale-runtime:*"
+composer require "talesoft/tale-router:*"
 composer install
 ```
 
@@ -22,42 +18,20 @@ composer install
 
 ```php
 
-$app = new Tale\Runtime\App();
+use Tale\App;
+use Tale\Router;
 
-class HelloMiddleware implements Tale\Runtime\MiddlewareInterface
-{
+$app = new App();
 
-    public function __invoke(
-        ServerRequestInterface $request,
-        ResponseInterface $response,
-        callable $next
-    )
-    {
-        $response->getBody()->write('Hello ');
+$app->usePlugin(Router::class);
 
-        return $next($request, $response);
-    }
-}
-
-class WorldMiddleware implements Tale\Runtime\MiddlewareInterface
-{
-
-    public function __invoke(
-        ServerRequestInterface $request,
-        ResponseInterface $response,
-        callable $next
-    )
-    {
-        $response->getBody()->write('World!');
-        
-        return $next($request, $response);
-    }
-}
-
-$app = $app->with(new HelloMiddleware())
-    ->with(new WorldMiddleware());
+$router = $app->get(Router::class);
+$router->get('/:controller?/:action?/:id?', function($request, $response) {
     
+    var_dump($request->getAttribute('routeData')); // ['controller' => 'user', 'action' => 'details', 'id' => '1'];
+    return $response;
+});
 
-Tale\Http\Emitter::emit($app->run()); //Outputs "Hello World!" to the client
-    
+$app->display();
+
 ```

@@ -2,18 +2,17 @@
 
 namespace Tale;
 
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
+use Tale\App\Plugin\Middleware;
+use Tale\App\PluginInterface;
+use Tale\App\PluginTrait;
 use Tale\Http\Method;
-use Tale\Router\Args;
+use Tale\Http\Runtime;
 use Tale\Router\Route;
 use Tale\Router\RouteInterface;
-use Tale\Runtime\App;
-use Tale\Runtime\MiddlewareInterface;
 
-class Router implements MiddlewareInterface
+class Router implements PluginInterface
 {
+    use PluginTrait;
 
     /** @var Route[] */
     private $_routes;
@@ -28,60 +27,98 @@ class Router implements MiddlewareInterface
     {
 
         $this->_routes[] = $route;
+
         return $this;
     }
 
-    public function createRoute(array $methods, $pattern, $handler)
+    public function createRoute($route, $handler)
     {
 
-        $route = new Route($methods, $pattern, $handler);
-        return $this->addRoute($route);
+        $methods = [Method::GET, Method::POST];
+        if (preg_match('/^(?:(?<method>get|post|all)\s+)?/', $route, $matches)) {
+
+            $method = strtoupper(isset($matches[1]) ? $matches[1] : 'all');
+
+            if ($method !== 'ALL')
+                $methods = [constant(Method::class."::$method")];
+
+            $route = substr($route, strlen($matches[0]));
+        }
+
+        if (is_string($handler) && $handler[0] === '@') {
+
+            $className = substr($handler, 1 );
+            $app = $this->getApp();
+
+            if (is_subclass_of($className, PluginInterface::class))
+                $handler = new Middleware($app, $className);
+            else {
+
+                if (!$app->has($className))
+                    $app->register($className);
+
+                $handler = $app->get($className);
+            }
+        }
+
+        if (!Runtime::isMiddleware($handler))
+            throw new \InvalidArgumentException(
+                "Passed handler for route $route is not a valid ".
+                "middleware"
+            );
+
+        return new Route($methods, $route, $handler);
     }
 
     public function all($pattern, $handler)
     {
 
-        return $this->createRoute([Method::GET, Method::POST], $pattern, $handler);
+        return $this->addRoute(
+            $this->createRoute($pattern, $handler)
+        );
     }
 
     public function get($pattern, $handler)
     {
 
-        return $this->createRoute([Method::GET], $pattern, $handler);
+        return $this->addRoute(
+            $this->createRoute("GET $pattern", $handler)
+        );
     }
 
     public function post($pattern, $handler)
     {
 
-        return $this->createRoute([Method::POST], $pattern, $handler);
+        return $this->addRoute(
+            $this->createRoute("POST $pattern", $handler)
+        );
     }
 
-    public function getRegEx(RouteInterface $route)
+    public function getRegularExpression(RouteInterface $route)
     {
 
-        return '/^'.str_replace('/', '\\/', preg_replace_callback('#(.)?:([a-z\_]\w*)(\?)?#i', function ($m) {
+        return '/^'.str_replace('/', '\\/', preg_replace_callback(
+            '#(.)?:([a-zA-Z\-\_][a-zA-Z0-9\-\_]*)(\?)?#i',
+            function ($matches) {
 
-            $key = $m[2];
-            $initiator = '';
-            $optional = '';
+                $key = $matches[2];
+                $initiator = '';
+                $optional = '';
 
-            if (!empty($m[1])) {
+                if (!empty($matches[1]))
+                    $initiator = '(?<'.$key.'Initiator>'.preg_quote($matches[1]).')';
 
-                $initiator = '(?<'.$key.'Initiator>'.preg_quote($m[1]).')';
-            }
+                if (!empty($matches[3]))
+                    $optional = '?';
 
-            if (!empty($m[3]))
-                $optional = '?';
-
-            return '(?:'.$initiator.'(?<'.$key.'>[a-z0-9\_\-]*?))'.$optional;
-
-        }, $route->getPattern())).'$/i';
+                return '(?:'.$initiator.'(?<'.$key.'>[a-zA-Z0-9\-\_]+?))'.$optional;
+        }, $route->getPattern())).'$/';
     }
 
     public function match(RouteInterface $route, $string)
     {
 
-        $isMatch = preg_match($this->getRegEx($route), $string, $matches);
+        $isMatch = preg_match($this->getRegularExpression($route), $string, $matches);
 
         if (!$isMatch)
             return false;
@@ -95,39 +132,37 @@ class Router implements MiddlewareInterface
         return $vars;
     }
 
-    public function __invoke(
-        ServerRequestInterface $request,
-        ResponseInterface $response,
-        callable $next
-    )
+    protected function handle()
     {
 
-        $app = new App();
-        /** @var ServerRequestInterface $request */
-        $request = $request->withAttribute('router', $this);
+        $app = $this->getApp();
+        $configuredRoutes = $app->getOption('router.routes', []);
+        $routes = $this->_routes;
 
-        foreach ($this->_routes as $route) {
+        $request = $this->getRequest();
+        $response = $this->getResponse();
 
-            if (in_array($request->getMethod(), $route->getMethods(), true)
-                && ($data = $this->match($route, $request->getUri()->getPath())) !== false) {
+        foreach ($configuredRoutes as $route => $handler)
+            $routes[] = $this->createRoute($route, $handler);
 
-                $app = $app->with(function(
-                    ServerRequestInterface $request,
-                    ResponseInterface $response,
-                    callable $next) use ($route, $data) {
+        foreach ($routes as $route) {
 
-                    return call_user_func(
-                        $route->getHandler(),
-                        $request->withAttribute('router.data', $data),
-                        $response,
-                        $next
-                    );
-                });
-            }
+            $vars = null;
+            if (!in_array($request->getMethod(), $route->getMethods())
+                || ($vars = $this->match($route, $request->getRequestTarget())) === false)
+                continue;
+
+            foreach ($vars as $key => $value)
+                $request = $request->withAttribute($key, $value);
+
+            return call_user_func(
+                $route->getHandler(),
+                $request,
+                $response,
+                $this->_next
+            );
         }
 
-        $request = $request->withAttribute('router.result', $app->dispatch($request, $response));
-
-        return $next($request, $response);
+        return $this->next();
     }
 }

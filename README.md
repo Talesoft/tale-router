@@ -26,10 +26,13 @@ $app = new App();
 $app->usePlugin(Router::class);
 
 $router = $app->get(Router::class);
-$router->get('/:controller?/:action?/:id?', function($request, $response) {
+$router->get('/:controller?/:action?/:id?.:format?', function($request, $response, $next) {
     
-    var_dump($request->getAttribute('routeData')); // ['controller' => 'user', 'action' => 'details', 'id' => '1'];
-    return $response;
+    $controller = $request->getAttribute('controller', 'index');
+    
+    //Handle controller $controller
+    
+    return $next($request, $response);
 });
 
 $app->display();

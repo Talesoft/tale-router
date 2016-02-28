@@ -2,79 +2,42 @@
 
 namespace Tale;
 
-use Tale\App\Plugin\Middleware;
-use Tale\App\PluginInterface;
-use Tale\App\PluginTrait;
+use Psr\Http\Message\ServerRequestInterface;
 use Tale\Http\Method;
 use Tale\Http\Runtime;
+use Tale\Http\Runtime\MiddlewareInterface;
 use Tale\Router\Route;
-use Tale\Router\RouteInterface;
 
-class Router implements PluginInterface
+class Router implements MiddlewareInterface
 {
-    use PluginTrait;
+    use Runtime\MiddlewareTrait;
 
+    private $_app;
     /** @var Route[] */
     private $_routes;
 
-    public function __construct()
+    public function __construct(App $app)
     {
 
+        $this->_app = $app;
         $this->_routes = [];
+
+        foreach ($app->getOption('router.routes', []) as $route => $handler)
+            $this->addRoute(Route::create($route, $handler));
     }
 
-    public function addRoute(RouteInterface $route)
+    public function addRoute(Route $route)
     {
 
         $this->_routes[] = $route;
-
         return $this;
-    }
-
-    public function createRoute($route, $handler)
-    {
-
-        $methods = [Method::GET, Method::POST];
-        if (preg_match('/^(?:(?<method>get|post|all)\s+)?/', $route, $matches)) {
-
-            $method = strtoupper(isset($matches[1]) ? $matches[1] : 'all');
-
-            if ($method !== 'ALL')
-                $methods = [constant(Method::class."::$method")];
-
-            $route = substr($route, strlen($matches[0]));
-        }
-
-        if (is_string($handler) && $handler[0] === '@') {
-
-            $className = substr($handler, 1 );
-            $app = $this->getApp();
-
-            if (is_subclass_of($className, PluginInterface::class))
-                $handler = new Middleware($app, $className);
-            else {
-
-                if (!$app->has($className))
-                    $app->register($className);
-
-                $handler = $app->get($className);
-            }
-        }
-
-        if (!Runtime::isMiddleware($handler))
-            throw new \InvalidArgumentException(
-                "Passed handler for route $route is not a valid ".
-                "middleware"
-            );
-
-        return new Route($methods, $route, $handler);
     }
 
     public function all($pattern, $handler)
     {
 
         return $this->addRoute(
-            $this->createRoute($pattern, $handler)
+            new Route([Method::GET, Method::POST], $pattern, $handler)
         );
     }
 
@@ -82,7 +45,7 @@ class Router implements PluginInterface
     {
 
         return $this->addRoute(
-            $this->createRoute("GET $pattern", $handler)
+            new Route([Method::GET], $pattern, $handler)
         );
     }
 
@@ -90,79 +53,44 @@ class Router implements PluginInterface
     {
 
         return $this->addRoute(
-            $this->createRoute("POST $pattern", $handler)
+            new Route([Method::POST], $pattern, $handler)
         );
     }
 
-    public function getRegularExpression(RouteInterface $route)
+    public function route(ServerRequestInterface $request)
     {
 
-        return '/^'.str_replace('/', '\\/', preg_replace_callback(
-            '#(.)?:([a-zA-Z\-\_][a-zA-Z0-9\-\_]*)(\?)?#i',
-            function ($matches) {
-
-                $key = $matches[2];
-                $initiator = '';
-                $optional = '';
-
-                if (!empty($matches[1]))
-                    $initiator = '(?<'.$key.'Initiator>'.preg_quote($matches[1]).')';
-
-                if (!empty($matches[3]))
-                    $optional = '?';
-
-                return '(?:'.$initiator.'(?<'.$key.'>[a-zA-Z0-9\-\_]+?))'.$optional;
-        }, $route->getPattern())).'$/';
-    }
-
-    public function match(RouteInterface $route, $string)
-    {
-
-        $isMatch = preg_match($this->getRegularExpression($route), $string, $matches);
-
-        if (!$isMatch)
-            return false;
-
-        $vars = [];
-        if (!empty($matches))
-            foreach ($matches as $name => $value)
-                if (is_string($name) && !empty($value))
-                    $vars[$name] = $value;
-
-        return $vars;
-    }
-
-    protected function handle()
-    {
-
-        $app = $this->getApp();
-        $configuredRoutes = $app->getOption('router.routes', []);
-        $routes = $this->_routes;
-
-        $request = $this->getRequest();
-        $response = $this->getResponse();
-
-        foreach ($configuredRoutes as $route => $handler)
-            $routes[] = $this->createRoute($route, $handler);
-
+        /** @var Route[] $routes */
+        $routes = array_reverse($this->_routes);
         foreach ($routes as $route) {
+
+            $path = $request->getUri()->getPath();
+            if (empty($path))
+                $path = '/';
 
             $vars = null;
             if (!in_array($request->getMethod(), $route->getMethods())
-                || ($vars = $this->match($route, $request->getRequestTarget())) === false)
+                || ($vars = $route->match($path)) === false)
                 continue;
 
+            $subRequest = $request;
             foreach ($vars as $key => $value)
-                $request = $request->withAttribute($key, $value);
+                $subRequest = $subRequest->withAttribute($key, $value);
 
-            return call_user_func(
-                $route->getHandler(),
-                $request,
-                $response,
-                $this->_next
-            );
+            $this->_app->prepend(function($request, $response, $next) use ($route, $subRequest) {
+
+                $handler = $this->_app->prepareMiddleware($route->getHandler());
+                return $handler($subRequest, $response, $next);
+            });
         }
 
-        return $this->next();
+        return $this;
+    }
+
+    protected function handleRequest()
+    {
+
+        $this->route($this->getRequest());
+        return $this->handleNext();
     }
 }

@@ -23,7 +23,7 @@ use Tale\Router;
 
 $app = new App();
 
-$app->usePlugin(Router::class);
+$app->append(Router::class);
 
 $router = $app->get(Router::class);
 $router->get('/:controller?/:action?/:id?.:format?', function($request, $response, $next) {

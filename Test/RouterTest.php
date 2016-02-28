@@ -3,29 +3,27 @@
 namespace Tale\Test;
 
 use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
 use Tale\App;
+use Tale\Http\Runtime\MiddlewareInterface;
+use Tale\Http\Runtime\MiddlewareTrait;
 use Tale\Http\ServerRequest;
 use Tale\Http\Uri;
 use Tale\Router;
 
-class Dispatcher implements App\PluginInterface
+class Dispatcher implements MiddlewareInterface
 {
-    use App\PluginTrait;
+    use MiddlewareTrait;
 
-    protected function handle()
+    protected function handleRequest()
     {
 
         $request = $this->getRequest();
-        $this->setResponse(
-            $this->getResponse()
-                ->withHeader('X-Controller', $request->getAttribute('controller', 'index'))
-                ->withHeader('X-Action', $request->getAttribute('action', 'index'))
-                ->withHeader('X-ID', $request->getAttribute('id', ''))
-                ->withHeader('X-Format', $request->getAttribute('format', 'html'))
-        );
 
-        return $this->next();
+        return $this->getResponse()
+            ->withHeader('X-Controller', $request->getAttribute('controller', 'index'))
+            ->withHeader('X-Action', $request->getAttribute('action', 'index'))
+            ->withHeader('X-ID', $request->getAttribute('id', ''))
+            ->withHeader('X-Format', $request->getAttribute('format', 'html'));
     }
 }
 
@@ -38,32 +36,40 @@ class RouterTest extends \PHPUnit_Framework_TestCase
         $app = new App([
             'router' => [
                 'routes' => [
-                    '/some-file' => function(ServerRequestInterface $request, ResponseInterface $response) {
+                    '/.*' => function($req, ResponseInterface $res, callable $next) {
 
-                        return $response->withHeader('Test-Header', 'some-file');
+                        return $next($req, $res->withHeader('X-Global', 'global as fuck'));
                     },
-                    '/some-other-file' => function(ServerRequestInterface $request, ResponseInterface $response) {
+                    '/some-file' => function($req, ResponseInterface $res) {
 
-                        return $response->withHeader('Test-Header', 'some-other-file');
+                        return $res->withHeader('X-Test-Header', 'some-file');
                     },
-                    '/:controller?/:action?/:id?.:format?' => '@Tale\\Test\\Dispatcher'
+                    '/some-other-file' => function($req, ResponseInterface $res) {
+
+                        return $res->withHeader('X-Test-Header', 'some-other-file');
+                    },
+                    '/:controller?/:action?/:id?.:format?' => Dispatcher::class
                 ]
             ]
         ]);
 
-        $app->usePlugin(Router::class);
+        $app->append(Router::class);
 
-        $response = $app->dispatch(new ServerRequest((new Uri())->withPath('/some-file')));
+        $response = $app->run(new ServerRequest((new Uri())->withPath('/some-file')));
         $this->assertInstanceOf(ResponseInterface::class, $response);
-        $this->assertTrue($response->hasHeader('test-header'));
-        $this->assertEquals('some-file', $response->getHeaderLine('test-header'));
+        $this->assertTrue($response->hasHeader('x-test-header'), 'x-test-header /some-file');
+        $this->assertEquals('some-file', $response->getHeaderLine('x-test-header'));
+        $this->assertTrue($response->hasHeader('x-global'), 'x-global /some-file');
+        $this->assertEquals('global as fuck', $response->getHeaderLine('x-global'));
 
-        $response = $app->dispatch(new ServerRequest((new Uri())->withPath('/some-other-file')));
+        $response = $app->run(new ServerRequest((new Uri())->withPath('/some-other-file')));
         $this->assertInstanceOf(ResponseInterface::class, $response);
-        $this->assertTrue($response->hasHeader('test-header'));
-        $this->assertEquals('some-other-file', $response->getHeaderLine('test-header'));
+        $this->assertTrue($response->hasHeader('x-test-header'), 'x-test-header /some-other-file');
+        $this->assertEquals('some-other-file', $response->getHeaderLine('x-test-header'));
+        $this->assertTrue($response->hasHeader('x-global'), 'x-global /some-other-file');
+        $this->assertEquals('global as fuck', $response->getHeaderLine('x-global'));
 
-        $response = $app->dispatch(new ServerRequest((new Uri())->withPath('/some-controller')));
+        $response = $app->run(new ServerRequest((new Uri())->withPath('/some-controller')));
         $this->assertInstanceOf(ResponseInterface::class, $response);
         $this->assertTrue($response->hasHeader('x-controller'), 'x-controller /some-controller');
         $this->assertEquals('some-controller', $response->getHeaderLine('x-controller'));
@@ -73,9 +79,11 @@ class RouterTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('', $response->getHeaderLine('x-id'));
         $this->assertTrue($response->hasHeader('x-format'), 'x-format /some-controller');
         $this->assertEquals('html', $response->getHeaderLine('x-format'));
+        $this->assertTrue($response->hasHeader('x-global'), 'x-global /some-controller');
+        $this->assertEquals('global as fuck', $response->getHeaderLine('x-global'));
 
 
-        $response = $app->dispatch(new ServerRequest((new Uri())->withPath('/user/details/1.json')));
+        $response = $app->run(new ServerRequest((new Uri())->withPath('/user/details/1.json')));
         $this->assertInstanceOf(ResponseInterface::class, $response);
         $this->assertTrue($response->hasHeader('x-controller'), 'x-controller /user/details...');
         $this->assertEquals('user', $response->getHeaderLine('x-controller'));
@@ -85,5 +93,7 @@ class RouterTest extends \PHPUnit_Framework_TestCase
         $this->assertEquals('1', $response->getHeaderLine('x-id'));
         $this->assertTrue($response->hasHeader('x-format'), 'x-format /user/details...');
         $this->assertEquals('json', $response->getHeaderLine('x-format'));
+        $this->assertTrue($response->hasHeader('x-global'), 'x-global /user/details...');
+        $this->assertEquals('global as fuck', $response->getHeaderLine('x-global'));
     }
 }

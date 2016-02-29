@@ -2,30 +2,53 @@
 
 namespace Tale;
 
+use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
+use Tale\Config\DelegateTrait;
 use Tale\Http\Method;
 use Tale\Http\Runtime;
 use Tale\Http\Runtime\MiddlewareInterface;
+use Tale\Http\Runtime\MiddlewareTrait;
 use Tale\Router\Route;
 
+/**
+ * Class Router
+ *
+ * @package Tale
+ */
 class Router implements MiddlewareInterface
 {
-    use Runtime\MiddlewareTrait;
+    use MiddlewareTrait;
+    use DelegateTrait;
 
+    /**
+     * @var \Tale\App
+     */
     private $_app;
+
     /** @var Route[] */
     private $_routes;
 
+    /**
+     * Router constructor.
+     *
+     * @param App $app
+     */
     public function __construct(App $app)
     {
 
         $this->_app = $app;
         $this->_routes = [];
 
-        foreach ($app->getOption('router.routes', []) as $route => $handler)
+        foreach ($app->getOption('routes', []) as $route => $handler)
             $this->addRoute(Route::create($route, $handler));
     }
 
+    /**
+     * @param Route $route
+     *
+     * @return $this
+     */
     public function addRoute(Route $route)
     {
 
@@ -33,6 +56,12 @@ class Router implements MiddlewareInterface
         return $this;
     }
 
+    /**
+     * @param string $pattern
+     * @param callable|string $handler
+     *
+     * @return Router
+     */
     public function all($pattern, $handler)
     {
 
@@ -41,6 +70,12 @@ class Router implements MiddlewareInterface
         );
     }
 
+    /**
+     * @param string $pattern
+     * @param callable|string $handler
+     *
+     * @return Router
+     */
     public function get($pattern, $handler)
     {
 
@@ -49,6 +84,12 @@ class Router implements MiddlewareInterface
         );
     }
 
+    /**
+     * @param string $pattern
+     * @param callable|string $handler
+     *
+     * @return Router
+     */
     public function post($pattern, $handler)
     {
 
@@ -57,6 +98,11 @@ class Router implements MiddlewareInterface
         );
     }
 
+    /**
+     * @param ServerRequestInterface $request
+     *
+     * @return $this
+     */
     public function route(ServerRequestInterface $request)
     {
 
@@ -64,7 +110,9 @@ class Router implements MiddlewareInterface
         $routes = array_reverse($this->_routes);
         foreach ($routes as $route) {
 
-            $path = $request->getUri()->getPath();
+            $baseUri = $this->getOption('baseUri', '');
+            $path = $baseUri.$request->getUri()->getPath();
+
             if (empty($path))
                 $path = '/';
 
@@ -87,10 +135,25 @@ class Router implements MiddlewareInterface
         return $this;
     }
 
+    /**
+     * @return ResponseInterface
+     */
     protected function handleRequest()
     {
 
         $this->route($this->getRequest());
         return $this->handleNext();
+    }
+
+    protected function getOptionNameSpace()
+    {
+
+        return 'router';
+    }
+
+    protected function getTargetConfigurableObject()
+    {
+
+        return $this->_app;
     }
 }

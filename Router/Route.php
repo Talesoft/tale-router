@@ -5,13 +5,36 @@ namespace Tale\Router;
 use Tale\Http\Method;
 use InvalidArgumentException;
 
+/**
+ * Class Route
+ *
+ * @package Tale\Router
+ */
 class Route
 {
 
+    /**
+     * @var array
+     */
     private $_methods;
+
+    /**
+     * @var string
+     */
     private $_pattern;
+
+    /**
+     * @var (callable|string)[]
+     */
     private $_handler;
 
+    /**
+     * Route constructor.
+     *
+     * @param string[]        $methods
+     * @param string          $pattern
+     * @param callable|string $handler
+     */
     public function __construct(array $methods, $pattern, $handler)
     {
 
@@ -46,7 +69,7 @@ class Route
     }
 
     /**
-     * @return string
+     * @return string[]
      */
     public function getMethods()
     {
@@ -62,13 +85,16 @@ class Route
     }
 
     /**
-     * @return callable
+     * @return callable|string
      */
     public function getHandler()
     {
         return $this->_handler;
     }
 
+    /**
+     * @return string
+     */
     public function getRegularExpression()
     {
 
@@ -90,6 +116,11 @@ class Route
         }, $this->_pattern)).'$/';
     }
 
+    /**
+     * @param string $string
+     *
+     * @return array|false
+     */
     public function match($string)
     {
 
@@ -107,6 +138,12 @@ class Route
         return $vars;
     }
 
+    /**
+     * @param string $route
+     * @param callable|string $handler
+     *
+     * @return static
+     */
     public static function create($route, $handler)
     {
 

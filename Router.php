@@ -22,12 +22,12 @@ class Router implements MiddlewareInterface
     use DelegateTrait;
 
     /**
-     * @var \Tale\App
+     * @var App
      */
-    private $_app;
+    private $app;
 
     /** @var Route[] */
-    private $_routes;
+    private $routes;
 
     /**
      * Router constructor.
@@ -37,10 +37,10 @@ class Router implements MiddlewareInterface
     public function __construct(App $app)
     {
 
-        $this->_app = $app;
-        $this->_routes = [];
+        $this->app = $app;
+        $this->routes = [];
 
-        foreach ($app->getOption('routes', []) as $route => $handler)
+        foreach ($this->getOption('routes', []) as $route => $handler)
             $this->addRoute(Route::create($route, $handler));
     }
 
@@ -52,7 +52,7 @@ class Router implements MiddlewareInterface
     public function addRoute(Route $route)
     {
 
-        $this->_routes[] = $route;
+        $this->routes[] = $route;
         return $this;
     }
 
@@ -107,11 +107,20 @@ class Router implements MiddlewareInterface
     {
 
         /** @var Route[] $routes */
-        $routes = array_reverse($this->_routes);
+        $routes = array_reverse($this->routes);
         foreach ($routes as $route) {
 
+            $path = $request->getUri()->getPath();
             $baseUri = $this->getOption('baseUri', '');
-            $path = $baseUri.$request->getUri()->getPath();
+
+            $len = strlen($baseUri);
+            if ($len > 0) {
+
+                if (strncmp($baseUri, $path, $len) !== 0)
+                    continue;
+
+                $path = substr($path, $len);
+            }
 
             if (empty($path))
                 $path = '/';
@@ -125,9 +134,9 @@ class Router implements MiddlewareInterface
             foreach ($vars as $key => $value)
                 $subRequest = $subRequest->withAttribute($key, $value);
 
-            $this->_app->prepend(function($request, $response, $next) use ($route, $subRequest) {
+            $this->app->prepend(function($request, $response, $next) use ($route, $subRequest) {
 
-                $handler = $this->_app->prepareMiddleware($route->getHandler());
+                $handler = $this->app->prepareMiddleware($route->getHandler());
                 return $handler($subRequest, $response, $next);
             });
         }
@@ -136,13 +145,14 @@ class Router implements MiddlewareInterface
     }
 
     /**
+     * @param callable $next
+     *
      * @return ResponseInterface
      */
-    protected function handleRequest()
+    protected function handleRequest(callable $next)
     {
-
-        $this->route($this->getRequest());
-        return $this->handleNext();
+        $this->route($this->request);
+        return $next($this->request, $this->response);
     }
 
     protected function getOptionNameSpace()
@@ -154,6 +164,6 @@ class Router implements MiddlewareInterface
     protected function getTargetConfigurableObject()
     {
 
-        return $this->_app;
+        return $this->app;
     }
 }

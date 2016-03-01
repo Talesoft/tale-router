@@ -16,17 +16,17 @@ class Route
     /**
      * @var array
      */
-    private $_methods;
+    private $methods;
 
     /**
      * @var string
      */
-    private $_pattern;
+    private $pattern;
 
     /**
      * @var (callable|string)[]
      */
-    private $_handler;
+    private $handler;
 
     /**
      * Route constructor.
@@ -38,17 +38,17 @@ class Route
     public function __construct(array $methods, $pattern, $handler)
     {
 
-        $this->_methods = $methods;
-        $this->_pattern = $pattern;
-        $this->_handler = $handler;
+        $this->methods = $methods;
+        $this->pattern = $pattern;
+        $this->handler = $handler;
 
-        if (count($this->_methods) < 1)
+        if (count($this->methods) < 1)
             throw new InvalidArgumentException(
                 "Argument 1 passed to Route->__construct needs to have at ".
                 "least one array item"
             );
 
-        foreach ($this->_methods as $i => $method) {
+        foreach ($this->methods as $i => $method) {
 
             if (!is_string($method) || !in_array($method, [Method::GET, Method::POST]))
                 throw new InvalidArgumentException(
@@ -73,7 +73,8 @@ class Route
      */
     public function getMethods()
     {
-        return $this->_methods;
+
+        return $this->methods;
     }
 
     /**
@@ -81,7 +82,8 @@ class Route
      */
     public function getPattern()
     {
-        return $this->_pattern;
+
+        return $this->pattern;
     }
 
     /**
@@ -89,7 +91,8 @@ class Route
      */
     public function getHandler()
     {
-        return $this->_handler;
+
+        return $this->handler;
     }
 
     /**
@@ -113,7 +116,7 @@ class Route
                     $optional = '?';
 
                 return '(?:'.$initiator.'(?<'.$key.'>[a-zA-Z0-9\-\_]+?))'.$optional;
-        }, $this->_pattern)).'$/';
+        }, $this->pattern)).'$/';
     }
 
     /**

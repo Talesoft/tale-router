@@ -20,6 +20,7 @@
     "require": {
         "php": ">=5.5.0",
         "psr/http-message": "~1.0",
+        "talesoft/tale-config": "~0.2",
         "talesoft/tale-http": "~0.1",
         "talesoft/tale-http-runtime": "~0.1",
         "talesoft/tale-app": "~0.1"
